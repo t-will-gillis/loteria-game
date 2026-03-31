@@ -1,17 +1,19 @@
 # loteria-game
-Simple Loteria game using Phaser3, the Phaser3-Parcel-Template https://github.com/ourcade/phaser3-parcel-template via supertommy at Ourcade, and JavaScript. 
+Lotería card game built using Phaser3, the Phaser3-Parcel-Template https://github.com/ourcade/phaser3-parcel-template via supertommy at Ourcade, JavaScript, Vite. 
 
-Controls are UpArrow to deal, DownArrow to check for matches and check for winning condition. 
+Features traditional game board, card deck, and bottlecap markers. 
+- Controls are mouse-driven for deal, moving bottlecap, and checking win condition.
+
 
 There is a long suggestions list for future iterations:
 - [ ] Add landing/home page with options
   - [ ] Let player input name
   - [ ] Let input custom board, or reselect board
   - [ ] Let select number of other players
-- Add pot with starting money, then track across multiple games
+- [ ] Add pot with starting money, then track across multiple games
 - [x] Stop when someone hits a win condition
 - [ ] Remove person who loses all money
-- [ ] Animations for winner- text, maybe highlight how they won, etc.
+- [x] Animations for winner- text, maybe highlight how they won, etc.
 - [ ] make special win condition
 - [x] Have player manually select/ move bottle cap to matches. If they miss the match, so be it.
 - [ ] Multiplayer ability?
