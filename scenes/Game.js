@@ -17,10 +17,13 @@ export default class Game extends Phaser.Scene {
 
     cardData= 888
     noCardsDrawn = 0
+    gameOver = false
     matchCheckArrays = {
         'Player 1': [],
     }
     dealButton
+    p1PlacedSquares = new Set()
+    currentDealCaps = []
 
     winArrays = [
         [0, 1, 2, 3],
@@ -36,6 +39,17 @@ export default class Game extends Phaser.Scene {
         [8, 9, 10, 11],
         [12, 13, 14, 15]
     ]
+
+    //BELOW angle (degrees, 0=top/12 o'clock, clockwise) from which each player's cap enters the screen
+    playerAngles = {
+        'Player 1': 270,
+        'Player 2': 10,
+        'Player 3': 30,
+        'Player 4': 55,
+        'Player 5': 75,
+        'Player 6': 100,
+        'Player 7': 125,
+    }
 
 
     constructor() {
@@ -85,26 +99,39 @@ export default class Game extends Phaser.Scene {
         //BELOW creates top card i.e. visual back of card
         this.topCard = this.add.image(675, 350, 'frontCard').setScale(1.33).setDepth(-33)
 
-        this.dealButton = this.add.text(width * .56, height * .60, 'Deal!', { fontSize: 28}).setOrigin(0.5)
+        this.dealButton = this.add.text(width * .56, height * .70, 'Deal!', { fontSize: 28}).setOrigin(0.5)
 
         this.dealButton.setInteractive()
-        this.dealButton.on('pointerdown', this.handleDeal, this.card)
+        this.dealButton.on('pointerdown', this.handleDeal, this)
 
-        this.cardsDrawn = this.add.text(width * .56, height * .65, '', { fontSize: 18}).setOrigin(0.5)
+        this.cardsDrawn = this.add.text(width * .56, height * .75, '', { fontSize: 18}).setOrigin(0.5)
 
         this.gameStatus = this.add.text(width * 0.5, height * .95, '', { fontSize: 64}).setOrigin(0.5)
+
+        this.loteriaButton = this.add.text(width * 0.13, height * 0.88, 'Loteria!', { fontSize: 32 }).setOrigin(0.5)
+        this.loteriaButton.setInteractive()
+        this.loteriaButton.on('pointerdown', this.claimWin, this)
+
+        this.mentirosaText = this.add.text(width * 0.13, height * 0.93, '', { fontSize: 28 }).setOrigin(0.5)
+
+        this.createPileCap()
 
     }
 
     createBoardArray() {
 
-        //BELOW to randomize cards without having repeats. Though as written, still possible that second random call will repeat (which is actually OK- just don't want three repeats)
+        //BELOW to randomize cards allowing at most one repeated card across the whole board
         let gameBoardArray = []
+        let hasDuplicate = false
         for (let item = 0; item < 16; item++) {
             let gameBoardItem = Math.floor(Math.random()*54)
-            if (gameBoardArray.includes(gameBoardItem)) {
+            while (
+                gameBoardArray.filter(x => x === gameBoardItem).length >= 2 ||
+                (hasDuplicate && gameBoardArray.includes(gameBoardItem))
+            ) {
                 gameBoardItem = Math.floor(Math.random()*54)
             }
+            if (gameBoardArray.includes(gameBoardItem)) hasDuplicate = true
             gameBoardArray.push(gameBoardItem)
         }
         return gameBoardArray
@@ -145,98 +172,216 @@ export default class Game extends Phaser.Scene {
     }
 
     handleDeal() {
-        console.log(`ppp`)
-
+        this.doDeal()
     }
 
-    dealCard() {
-        this.activeCard = this.deckArray.shift()
-    }
-
-
-    updateDeck() {
-
-        let activeCard
-
-        if (this.cursors.up.isDown && !this.flipFlop) {
-            this.dealButton.setText('Down to Check')
-            this.deckIndex = this.deckArray.shift()
-            this.card = this.add.sprite(675, 350, 'loteria', this.deckIndex).setScale(0, 1)
-            this.card.setData('id' , this.deckIndex )
-            this.flipFlop = true
-
-                this.tweens.add({
-                    targets: this.card,
-                    x: 675,
-                    y: 350,
-                    scaleX: 1,
-
-                    duration: 200,
-                    onComplete: () => {
-                        activeCard = this.card
-                        this.cardData = this.card.getData('id')
-                        this.noCardsDrawn++
-                        this.cardsDrawn.setText(`Cards Drawn: ${this.noCardsDrawn}`)
-
-                    }})
-        }
-    }
-
-
-    //BELOW checking for matches across all boards and changing them to green if true.
-    /**
-     *
-     * @param {Phaser.Physics.Arcade.Sprite} boardIcon
-     */
-    checkMatch() {
-        const random = Math.floor(Math.random() * 7);
-        const ranX = Math.floor(Math.random() * 25);
-        const ranY = Math.floor(Math.random() * 75);
-        this.children.each(c => {
-            /** @type {Phaser.Physics.Arcade.Sprite} */
-            const child = c
-            if (child.getData('picId') === this.cardData) {
-                let playerNameName = child.getData('playerName')
-                let playerBoardId = child.getData('boardId')
-                let scale = child.getData('scale')
-                let xLoc = child.getData('xLoc')+(ranX*scale)
-                let yLoc = child.getData('yLoc')+(ranY*scale)
-                this.matchCheckArrays[(`${playerNameName}`)].push(playerBoardId)
-                console.log(this.matchCheckArrays[(`${playerNameName}`)])
-                this.coke = this.add.sprite(300, -2500, 'cokeSprites2', random).setScale(.275*scale).setOrigin(0, 0)
-                this.tweens.add({
-                    targets: this.coke,
-                    x: xLoc,
-                    y: yLoc,
-                    // scaleX: 1,
-
-                    duration: 500,
-                    onComplete: () => {
-                        child.setTint(0x00ff00).setAlpha(.33)
-                    }
-                })
-
-                if (this.matchCheckArrays[(`${playerNameName}`)].length > 3) {
-                    this.checkWinConditions((`${playerNameName}`))
-                }
+    doDeal() {
+        if (this.flipFlop) return
+        this.deckIndex = this.deckArray.shift()
+        this.card = this.add.sprite(675, 350, 'loteria', this.deckIndex).setScale(0, 1)
+        this.card.setData('id', this.deckIndex)
+        this.flipFlop = true
+        const landX = 675 + Phaser.Math.Between(-15, 15)
+        const landY = 350 + Phaser.Math.Between(-11, 11)
+        const landAngle = Phaser.Math.Between(-6, 6)
+        this.tweens.add({
+            targets: this.card,
+            x: landX,
+            y: landY,
+            scaleX: 1,
+            angle: landAngle,
+            duration: 200,
+            onComplete: () => {
+                this.cardData = this.card.getData('id')
+                this.noCardsDrawn++
+                this.cardsDrawn.setText(`Cards Drawn: ${this.noCardsDrawn}`)
+                this.flipFlop = false
+                this.freezePlayerCaps()
+                this.scheduleAIMatches()
             }
         })
     }
 
-    updateBoardSelection() {
-        if (!this.flipFlop2) {
-            this.flipFlop2 = true
+    updateDeck() {
+        if (this.cursors.up.isDown) {
+            this.doDeal()
         }
     }
 
-    flipFlipFlop() {
 
-        if( this.cursors.down.isDown && this.flipFlop) {
-            this.flipFlop = false
-            this.flipFlop2 = false
-            this.dealButton.setText(`Up to Deal`)
-            this.checkMatch()
+    scheduleAIMatches() {
+        const aiPlayers = Object.keys(this.matchCheckArrays).filter(p => p !== 'Player 1')
+        aiPlayers.forEach(playerName => {
+            const delay = Phaser.Math.Between(500, 3000)
+            this.time.delayedCall(delay, () => {
+                this.checkMatchForPlayer(playerName)
+            })
+        })
+    }
+
+    createPileCap() {
+        const { width, height } = this.scale
+        const pileX = width * 0.05
+        const pileY = height * 0.45
+        const capScale = 0.275 * 0.45
+        const random = Math.floor(Math.random() * 7)
+        const cap = this.add.sprite(pileX, pileY, 'cokeSprites2', random)
+            .setScale(capScale)
+            .setOrigin(0.5)
+            .setInteractive()
+        this.input.setDraggable(cap)
+        cap.setData('isPile', true)
+        cap.setData('boardId', null)
+        cap.setData('homeX', pileX)
+        cap.setData('homeY', pileY)
+        cap.on('dragstart', () => {
+            cap.setData('prevX', cap.x)
+            cap.setData('prevY', cap.y)
+            cap.setDepth(10)
+        })
+        cap.on('drag', (_pointer, dragX, dragY) => {
+            cap.x = dragX
+            cap.y = dragY
+        })
+        cap.on('dragend', () => {
+            cap.setDepth(0)
+            this.handleCapDrop(cap)
+        })
+        this.pileCap = cap
+    }
+
+    handleCapDrop(cap) {
+        const isPile = cap.getData('isPile')
+        const currentBoardId = cap.getData('boardId')
+        const target = this.findP1DropTarget(cap.x, cap.y, currentBoardId)
+
+        if (target) {
+            const boardId = target.getData('boardId')
+            const xLoc = target.getData('xLoc')
+            const yLoc = target.getData('yLoc')
+            const scale = target.getData('scale')
+            const snapX = xLoc + (200 * scale) / 2
+            const snapY = yLoc + (332 * scale) / 2
+
+            //BELOW if this placed cap was already on a different square, free the old square
+            if (!isPile && currentBoardId !== null) {
+                this.currentDealCaps = this.currentDealCaps.filter(e => e.sprite !== cap)
+            }
+
+            cap.x = snapX
+            cap.y = snapY
+            cap.setData('boardId', boardId)
+            cap.setData('homeX', snapX)
+            cap.setData('homeY', snapY)
+            cap.setData('isPile', false)
+            this.currentDealCaps.push({ sprite: cap, boardId })
+
+            //BELOW placed cap was the pile cap — spawn a fresh one in the pile
+            if (isPile) {
+                this.createPileCap()
+            }
+        } else {
+            //BELOW invalid drop — return to where the cap came from
+            this.tweens.add({
+                targets: cap,
+                x: cap.getData('prevX'),
+                y: cap.getData('prevY'),
+                duration: 150
+            })
         }
+    }
+
+    findP1DropTarget(x, y, excludeBoardId) {
+        const occupied = new Set([
+            ...this.p1PlacedSquares,
+            ...this.currentDealCaps.map(e => e.boardId)
+        ])
+        if (excludeBoardId !== null) occupied.delete(excludeBoardId)
+
+        let target = null
+        this.children.each(c => {
+            if (target) return
+            if (c.getData('playerName') !== 'Player 1') return
+            if (c.getData('picId') !== this.cardData) return
+            if (occupied.has(c.getData('boardId'))) return
+            const xLoc = c.getData('xLoc')
+            const yLoc = c.getData('yLoc')
+            const scale = c.getData('scale')
+            if (x >= xLoc && x <= xLoc + 200 * scale && y >= yLoc && y <= yLoc + 332 * scale) {
+                target = c
+            }
+        })
+        return target
+    }
+
+    freezePlayerCaps() {
+        const newlyFrozen = new Set(this.currentDealCaps.map(e => e.boardId))
+        for (const { sprite, boardId } of this.currentDealCaps) {
+            sprite.disableInteractive()
+            this.p1PlacedSquares.add(boardId)
+            this.matchCheckArrays['Player 1'].push(boardId)
+        }
+        this.currentDealCaps = []
+        this.children.each(c => {
+            if (c.getData('playerName') === 'Player 1' && newlyFrozen.has(c.getData('boardId'))) {
+                c.setTint(0x00ff00).setAlpha(.33)
+            }
+        })
+    }
+
+    claimWin() {
+        const plrArray = this.matchCheckArrays['Player 1']
+        const hasWin = this.winArrays.some(combo => this.checkContains(combo, plrArray))
+        if (hasWin) {
+            this.checkWinConditions('Player 1')
+        } else {
+            this.mentirosaText.setText('Mentirosa!')
+            this.tweens.add({
+                targets: this.mentirosaText,
+                alpha: 0,
+                delay: 800,
+                duration: 400,
+                onComplete: () => {
+                    this.mentirosaText.setText('')
+                    this.mentirosaText.setAlpha(1)
+                }
+            })
+        }
+    }
+
+    //BELOW checking for matches on a single player's board and placing their cap
+    checkMatchForPlayer(playerName) {
+        const random = Math.floor(Math.random() * 7)
+        const ranX = Math.floor(Math.random() * 25)
+        const ranY = Math.floor(Math.random() * 75)
+        const angleRad = Phaser.Math.DegToRad(this.playerAngles[playerName] ?? 0)
+        const capDistance = 1500
+
+        this.children.each(c => {
+            const child = c
+            if (child.getData('picId') === this.cardData && child.getData('playerName') === playerName) {
+                let playerBoardId = child.getData('boardId')
+                let scale = child.getData('scale')
+                let xLoc = child.getData('xLoc') + (ranX * scale)
+                let yLoc = child.getData('yLoc') + (ranY * scale)
+                const startX = xLoc + Math.sin(angleRad) * capDistance
+                const startY = yLoc - Math.cos(angleRad) * capDistance
+                this.matchCheckArrays[playerName].push(playerBoardId)
+                const coke = this.add.sprite(startX, startY, 'cokeSprites2', random).setScale(.275 * scale).setOrigin(0, 0)
+                this.tweens.add({
+                    targets: coke,
+                    x: xLoc,
+                    y: yLoc,
+                    duration: 500,
+                    onComplete: () => {
+                        child.setTint(0x00ff00).setAlpha(.33)
+                        if (this.matchCheckArrays[playerName].length > 3) {
+                            this.checkWinConditions(playerName)
+                        }
+                    }
+                })
+            }
+        })
     }
 
     checkWinConditions(playerNameName) {
@@ -244,9 +389,33 @@ export default class Game extends Phaser.Scene {
         const plrArray = this.matchCheckArrays[(`${playerNameName}`)]
         for (let i = 0; i < this.winArrays.length; i++) {
             if (this.checkContains(this.winArrays[i], plrArray)) {
+                this.gameOver = true
+                this.dealButton.disableInteractive()
+                this.dealButton.setText('Game Over')
                 this.gameStatus.setText(`${playerNameName} Wins!`)
+                this.highlightWin(playerNameName, this.winArrays[i])
             }
         }
+    }
+
+    highlightWin(playerNameName, winArray) {
+
+        this.children.each(c => {
+            const child = c
+            if (child.getData('playerName') === playerNameName && winArray.includes(child.getData('boardId'))) {
+                //BELOW gold tint + pulse on the winning line — adjust tint color or tween values to change the effect
+                child.clearTint()
+                child.setAlpha(1)
+                child.setTint(0xffd700)
+                this.tweens.add({
+                    targets: child,
+                    alpha: 0.5,
+                    yoyo: true,
+                    repeat: -1,
+                    duration: 400
+                })
+            }
+        })
     }
 
     checkContains(first, second) {
@@ -259,9 +428,8 @@ export default class Game extends Phaser.Scene {
 
     update() {
 
+        if (this.gameOver) return
         this.updateDeck()
-        this.updateBoardSelection()
-        this.flipFlipFlop()
 
     }
 }
